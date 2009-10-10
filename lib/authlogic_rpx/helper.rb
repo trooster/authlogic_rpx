@@ -10,7 +10,7 @@ module AuthlogicRpx
 			params = (
 				{ :authenticity_token => form_authenticity_token, :add_rpx => options[:add_rpx] }.collect { |n| "#{n[0]}=#{ u(n[1]) }" if n[1] }
 			).compact.join('&')
-			RPXNow.embed_code(options[:app_name], u( options[:return_url] + '?' + params ), :language => options[:language] )
+			RPXNow.embed_code(options[:app_name], u( options[:return_url] + '?' + params ), :language => options[:language], :flags => options[:flags] )
 		end
 
 		# helper to insert a link to pop-up RPX login
@@ -28,6 +28,7 @@ module AuthlogicRpx
 				options[:app_name],
 				u( options[:return_url] + '?' + params ),
 				:language => options[:language],
+				:flags => options[:flags],
 				:unobtrusive=>true
 				)
 				# NB: i18n considerations? supports a :language parameter (not tested)
