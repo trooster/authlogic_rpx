@@ -443,6 +443,88 @@ If you need to programmatically perform proxy authentication as a specific user 
   session = UserSession.create(user, true) # skip authentication and log the user in directly, the true means "remember me"
   session.valid?
   => true
+
+== Example: deny auto-registration on duplicate e-mail address; always generate a unique loginname; give feedback to the user
+
+User model:
+
+  class UserSession < Authlogic::Session::Base
+    find_by_login_method :find_by_login_or_email    # if you want to login people by username or e-mail address
+    rpx_key RPX_API_KEY
+    rpx_extended_info
+  
+    private
+
+      # override auto_register value on condition
+      def auto_register?
+        User.find_by_email(@rpx_data['profile']['email']) ? false : true
+      end
+
+      # map_rpx_data maps additional fields from the RPX response into the user object
+      # see https://rpxnow.com/docs#profile_data for the definition of available attributes
+      def map_rpx_data
+        # map core profile data using authlogic indirect column names
+        self.attempted_record.send("#{klass.login_field}=", unique_login(@rpx_data['profile']['preferredUsername'], @rpx_data['profile']['email']) ) if attempted_record.send(klass.login_field).blank?
+        self.attempted_record.send("#{klass.email_field}=", @rpx_data['profile']['email'] ) if attempted_record.send(klass.email_field).blank?
+        if rpx_extended_info?
+                  # map some extended attributes
+          end
+      end
+
+      # generate a unique login: janedoe1, janedoe2, ..
+      def unique_login(login, email)
+        if login == ""
+          login = email.split('@')[0]
+        end
+        pattern = /(\d*)$/     
+        while User.find_by_login(login)
+          number = pattern.match(login)[0]
+          name =  login[0..(login.length-number.length-1)]
+          newnumber = number.to_i + 1
+          login = name + newnumber.to_s
+        end
+        login
+      end
+  end
+
+User_session controller:
+
+	def new
+	  flash[:referer] = request.referer
+	  @user_session = UserSession.new
+	  @user_session.login = params["login"]
+	end
+
+	def create
+	  @user_session = UserSession.new(params[:user_session])
+	  if @user_session.save
+	    if @user_session.new_registration?
+	      flash[:notice] = "Welcome! As a new user, please review your registration details before continuing."
+	      redirect_to edit_users_path
+	    else
+	      if @user_session.registration_complete?
+	        flash[:notice] = "Successfully signed in."
+	        if flash[:referer]
+	          redirect_to flash[:referer]
+	        else
+	          redirect_to "/"
+	        end
+	      else
+	        flash[:notice] = "Welcome back! Please complete required registration details before continuing."
+	        redirect_to edit_users_path
+	      end
+	    end
+	  else
+	    if params[:token]
+	      rpx_data = RPXNow.user_data(params[:token], :extended => false){ |raw| raw }
+	      flash[:error] = "The e-mail adres #{rpx_data['profile']['email']} is already registered. Login with this e-mail address and activate your #{rpx_data['profile']['providerName']} login from there."
+	      redirect_to login_path :login => rpx_data['profile']['email']
+	    else
+	      flash[:error] = "Het inloggen is mislukt"
+	      redirect_to login_path
+	    end
+	  end    
+	end
  
 
 == Internals
